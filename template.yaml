@@ -1,0 +1,265 @@
+Parameters:
+  SpringBootAMI:
+    Description: SpringBoot AMI Id
+    Default: ami-0ae8ac6abf6661ae5
+    Type: String
+  SpringBootInstanceType:
+    Description: free tier EC2 instance type for SpringBoot app
+    Default: t2.micro
+    Type: String
+  S3RoleName:
+    Description: Name of the S3 IAM role
+    Type: String
+    Default: ReadAccessRoleS3
+  KeyPairName:
+    Description: Name of the existing EC2 Key Pair
+    Type: String
+    Default: EC2_AWS_SUB_TASK_1
+Resources:
+  cloudformations3bucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub springboot-cloudform-${AWS::AccountId}
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: alias/aws/s3
+      PublicAccessBlockConfiguration:
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+  cloudformations3bucketBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref cloudformations3bucket
+      PolicyDocument:
+        Id: RequireEncryptionInTransit
+        Version: '2012-10-17'
+        Statement:
+          - Principal: '*'
+            Action: '*'
+            Effect: Deny
+            Resource:
+              - !GetAtt cloudformations3bucket.Arn
+              - !Sub ${cloudformations3bucket.Arn}/*
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref SpringBootNetwork
+      InternetGatewayId: !Ref SpringBootInternetGateway
+  SpringBootNetwork:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      Tags:
+        - Key: Name
+          Value: SpringBoot-Network
+  SpringBootInternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: SpringBoot-InternetGateway
+  SpringBootPublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref SpringBootNetwork
+      Tags:
+        - Key: Name
+          Value: SpringBoot-PublicSubnet-A
+      CidrBlock: 10.0.11.0/24
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs
+          Ref: AWS::Region
+  SpringBootPublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref SpringBootNetwork
+      Tags:
+        - Key: Name
+          Value: SpringBoot-PublicSubnet-B
+      CidrBlock: 10.0.12.0/24
+      AvailabilityZone: !Select
+        - 1
+        - !GetAZs
+          Ref: AWS::Region
+  SpringBootPublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref SpringBootNetwork
+      Tags:
+        - Key: Name
+          Value: SpringBoot-PublicRouteTable
+  Route:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref SpringBootPublicRouteTable
+      GatewayId: !Ref SpringBootInternetGateway
+      DestinationCidrBlock: 0.0.0.0/0
+  SubnetRouteTableAssociationA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref SpringBootPublicRouteTable
+      SubnetId: !Ref SpringBootPublicSubnetA
+  SubnetRouteTableAssociationB:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      RouteTableId: !Ref SpringBootPublicRouteTable
+      SubnetId: !Ref SpringBootPublicSubnetB
+  SecurityGroupIngressHTTP:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      GroupId: !Ref SpringBootSecGr1
+      CidrIp: 0.0.0.0/0
+  SecurityGroupIngressHTTPS:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      FromPort: 443
+      ToPort: 443
+      GroupId: !Ref SpringBootSecGr1
+      CidrIp: 0.0.0.0/0
+  SecurityGroupIngressSSH:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      FromPort: 22
+      ToPort: 22
+      GroupId: !Ref SpringBootSecGr1
+      CidrIp: 45.89.222.222/32 # masked
+  SpringBootSecGr1:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Allow all HTTP/S traffic
+      VpcId: !Ref SpringBootNetwork
+      Tags:
+        - Key: Name
+          Value: SpringBoot-SecGr1
+  SpringBootLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: SpringBoot-LaunchTemplate
+      LaunchTemplateData:
+        ImageId: !Ref SpringBootAMI
+        InstanceType: !Ref SpringBootInstanceType
+        KeyName: !Ref KeyPairName
+        SecurityGroupIds:
+          - !Ref SpringBootSecGr1
+        IamInstanceProfile:
+          Name: !Ref S3RoleName
+  SpringBootAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      MaxSize: '2'
+      MinSize: '1'
+      DesiredCapacity: '1'
+      AutoScalingGroupName: SpringBoot-AutoScalingGroup
+      LaunchTemplate:
+        LaunchTemplateId: !Ref SpringBootLaunchTemplate
+        Version: !GetAtt SpringBootLaunchTemplate.LatestVersionNumber
+      TargetGroupARNs:
+        - !Ref SpringBootTargetGroup
+      VPCZoneIdentifier:
+        - !Ref SpringBootPublicSubnetA
+        - !Ref SpringBootPublicSubnetB
+      Tags:
+        - Key: Name
+          Value: SpringBoot-AutoScalingGroup
+          PropagateAtLaunch: true
+  CPUAlarmHigh:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Scale out if CPU > 50%
+      Namespace: AWS/EC2
+      MetricName: CPUUtilization
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref SpringBootAutoScalingGroup
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 50
+      ComparisonOperator: GreaterThanThreshold
+      AlarmActions:
+        - !Ref ScaleOutPolicy
+  ScaleOutPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AutoScalingGroupName: !Ref SpringBootAutoScalingGroup
+      PolicyType: SimpleScaling
+      AdjustmentType: ChangeInCapacity
+      ScalingAdjustment: 1 # Increase the number of instances by 1
+      Cooldown: '300'
+  CPUAlarmLow:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: Scale in if CPU < 20%
+      Namespace: AWS/EC2
+      MetricName: CPUUtilization
+      Dimensions:
+        - Name: AutoScalingGroupName
+          Value: !Ref SpringBootAutoScalingGroup
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 20
+      ComparisonOperator: LessThanThreshold
+      AlarmActions:
+        - !Ref ScaleInPolicy
+  ScaleInPolicy:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AutoScalingGroupName: !Ref SpringBootAutoScalingGroup
+      PolicyType: SimpleScaling
+      AdjustmentType: ChangeInCapacity
+      ScalingAdjustment: -1 # Decrease the number of instances by 1
+      Cooldown: '300'
+  SpringBootLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Subnets:
+        - !Ref SpringBootPublicSubnetA
+        - !Ref SpringBootPublicSubnetB
+      SecurityGroups:
+        - !Ref SpringBootSecGr1
+      Name: SpringBoot-LoadBalancer
+      Type: application
+      Tags:
+        - Key: Name
+          Value: SpringBoot-LoadBalancer
+    DependsOn: SpringBootInternetGateway
+  SpringBootListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref SpringBootLoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref SpringBootTargetGroup
+  SpringBootTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: SpringBoot-TargetGroup
+      VpcId: !Ref SpringBootNetwork
+      Protocol: HTTP
+      Port: 80
+      TargetType: instance
+      HealthCheckEnabled: true
+      HealthCheckPath: /api/aws/location
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 3
+      UnhealthyThresholdCount: 2
+
+Outputs:
+  LoadBalancerDNSName:
+    Description: The DNS name of the load balancer
+    Value: !GetAtt SpringBootLoadBalancer.DNSName

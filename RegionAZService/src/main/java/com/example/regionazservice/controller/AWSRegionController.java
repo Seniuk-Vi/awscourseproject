@@ -16,4 +16,6 @@ public class AWSRegionController {
 		String availabilityZone = EC2MetadataUtils.getAvailabilityZone();
 		return new AWSRegionAZResponse(region, availabilityZone);
 	}
+
+
 }

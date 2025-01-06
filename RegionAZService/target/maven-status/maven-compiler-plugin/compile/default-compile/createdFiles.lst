@@ -1,0 +1,3 @@
+com\example\regionazservice\DemoApplication.class
+com\example\regionazservice\controller\AWSRegionController.class
+com\example\regionazservice\payload\AWSRegionAZResponse.class
