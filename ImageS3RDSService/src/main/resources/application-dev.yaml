@@ -1,0 +1,22 @@
+server:
+    port: 8081
+spring:
+    datasource:
+        url: ${RDS_CONNECTION_URL:jdbc:aws-wrapper:postgresql://images3.cvqk8y2kugon.us-east-1.rds.amazonaws.com:5432/images3}
+        username: postgres
+        password: postgres
+        hikari:
+            data-source-properties:
+                wrapperPlugins: failover,efm2
+
+    cloud:
+        aws:
+            sns:
+                region: ${AWS_SNS_REGION:us-east-1}
+            sqs:
+                region: ${AWS_SQS_REGION:us-east-1}
+            s3:
+                bucket:
+                    name: ${AWS_S3_BUCKET_NAME:images3rdsappawscourse}
+                    region: ${AWS_S3_BUCKET_REGION:us-east-1}
+

@@ -1,13 +1,20 @@
 package com.example.s3service.service.impl;
 
+import com.example.s3service.controller.ImageControllerImpl;
 import com.example.s3service.exceptions.ImageOperationException;
 import com.example.s3service.model.ImageMetadata;
 import com.example.s3service.payload.ImageMetadataResponse;
+import com.example.s3service.payload.ImageNotificationEmail;
 import com.example.s3service.payload.ImageResponse;
 import com.example.s3service.payload.ImageUploadRequest;
+import com.example.s3service.service.ImageMetadataService;
 import com.example.s3service.service.ImageService;
-import lombok.AllArgsConstructor;
+import com.example.s3service.service.NotificationService;
+import io.awspring.cloud.sqs.operations.SqsTemplate;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
 import software.amazon.awssdk.core.ResponseBytes;
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.core.sync.ResponseTransformer;
@@ -16,20 +23,31 @@ import software.amazon.awssdk.services.s3.model.DeleteObjectResponse;
 import software.amazon.awssdk.services.s3.model.GetObjectResponse;
 import software.amazon.awssdk.services.s3.model.PutObjectResponse;
 
-@AllArgsConstructor
+import static org.apache.commons.lang3.StringUtils.joinWith;
+import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.linkTo;
+import static org.springframework.hateoas.server.mvc.WebMvcLinkBuilder.methodOn;
+
+import java.io.IOException;
+
+@RequiredArgsConstructor
+@Slf4j
+@Service
 public class ImageServiceImpl implements ImageService {
 
     private final S3Client s3Client;
 
     private static final String FILE_EXTENSION = ".jpg";
 
-    private final ImageMetadataServiceImpl imageMetadataService;
+    private final NotificationService notificationService;
 
-    @Value("${aws.s3.bucket.name}")
+    private final ImageMetadataService imageMetadataService;
+
+    @Value("${spring.cloud.aws.s3.bucket.name}")
     private String bucketName;
 
     @Override
-    public ImageResponse uploadImage(ImageUploadRequest imageUploadRequest) {
+    public ImageResponse uploadImage(ImageUploadRequest imageUploadRequest) throws IOException {
+        log.info("Uploading image: {}", imageUploadRequest.getImageName());
         if (imageMetadataService.getImageMetadata(imageUploadRequest.getImageName()) != null) {
             throw new ImageOperationException("Image with name " + imageUploadRequest.getImageName() + " already exists");
         }
@@ -39,18 +57,22 @@ public class ImageServiceImpl implements ImageService {
                         request.bucket(bucketName)
                                 .key(imageUploadRequest.getImageName().concat(FILE_EXTENSION))
                                 .build(),
-                RequestBody.fromBytes(imageUploadRequest.getFile())
+                RequestBody.fromBytes(imageUploadRequest.getFile().getBytes())
         );
 
         if (putObjectResponse.sdkHttpResponse().isSuccessful()) {
             ImageMetadataResponse imageMetadataResponse = imageMetadataService.saveImageMetadata(ImageMetadata.builder()
-                            .fileExtention(FILE_EXTENSION)
+                            .fileExtension(FILE_EXTENSION)
                             .imageName(imageUploadRequest.getImageName())
-                            .sizeInBytes(imageUploadRequest.getFile().length)
+                            .sizeInBytes(imageUploadRequest.getFile().getBytes().length)
                             .build());
+
+            String sqsMessage = createMessage(imageMetadataResponse);
+            notificationService.sendSqsMessage(sqsMessage);
+            log.info("Message sent to SQS: {}", sqsMessage);
             return ImageResponse.builder()
                     .metadata(imageMetadataResponse)
-                    .file(imageUploadRequest.getFile())
+                    .file(imageUploadRequest.getFile().getBytes())
                     .build();
         }
 
@@ -83,15 +105,22 @@ public class ImageServiceImpl implements ImageService {
 
     @Override
     public void deleteImage(String imageName) {
+        imageMetadataService.deleteImageMetadata(imageName);
+
         DeleteObjectResponse deleteObjectResponse = s3Client.deleteObject(
                 request -> request.bucket(bucketName).key(imageName)
         );
 
-        if (deleteObjectResponse.sdkHttpResponse().isSuccessful()) {
-            imageMetadataService.deleteImageMetadata(imageName);
+        if (!deleteObjectResponse.sdkHttpResponse().isSuccessful()) {
+            throw new ImageOperationException("Failed to delete image: " +
+                    deleteObjectResponse.sdkHttpResponse().statusText().orElse("Unknown error"));
         }
-
-        throw new ImageOperationException("Failed to delete image: " +
-                deleteObjectResponse.sdkHttpResponse().statusText().orElse("Unknown error"));
     }
+
+    private String createMessage(ImageMetadataResponse imageMetadataResponse) {
+        String downloadLink = linkTo(methodOn(ImageControllerImpl.class).getImage(imageMetadataResponse.getImageName())).toString();
+        ImageNotificationEmail imageNotificationEmail = new ImageNotificationEmail(imageMetadataResponse, downloadLink);
+        return imageNotificationEmail.toString();
+    }
+
 }

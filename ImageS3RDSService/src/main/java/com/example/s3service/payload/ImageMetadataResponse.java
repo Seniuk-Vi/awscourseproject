@@ -8,6 +8,6 @@ import java.time.LocalDateTime;
 public class ImageMetadataResponse {
     private String imageName;
     private Integer sizeInBytes;
-    private String fileExtention;
+    private String fileExtension;
     private LocalDateTime lastUpdate;
 }

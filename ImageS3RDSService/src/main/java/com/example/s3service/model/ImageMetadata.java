@@ -1,8 +1,10 @@
 package com.example.s3service.model;
 
 import jakarta.persistence.*;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
 
@@ -12,6 +14,8 @@ import static jakarta.persistence.GenerationType.IDENTITY;
 @Table(name="image_metadata")
 @Data
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class ImageMetadata {
 
     @Id
@@ -24,11 +28,11 @@ public class ImageMetadata {
     @Column(name = "size_in_bytes")
     private Integer sizeInBytes;
 
-    @Column(name = "file_extention", length = 40)
-    private String fileExtention;
+    @Column(name = "file_extension", length = 40)
+    private String fileExtension;
 
     @Column(name = "last_update",
-            columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
+            columnDefinition = "TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
             insertable = false,
             updatable = false)
     private LocalDateTime lastUpdate;
@@ -39,7 +43,7 @@ public class ImageMetadata {
                 "id=" + id +
                 ", imageName='" + imageName + '\'' +
                 ", sizeInBytes=" + sizeInBytes +
-                ", fileExtention='" + fileExtention + '\'' +
+                ", fileExtention='" + fileExtension + '\'' +
                 ", lastUpdate=" + lastUpdate +
                 '}';
     }

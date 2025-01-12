@@ -6,16 +6,20 @@ import com.example.s3service.payload.ImageMetadataResponse;
 import com.example.s3service.repository.ImageMetadataRepository;
 import com.example.s3service.service.ImageMetadataService;
 import lombok.AllArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @AllArgsConstructor
+@Service
 public class ImageMetadataServiceImpl implements ImageMetadataService {
 
     private final ImageMetadataRepository imageMetadataRepository;
 
     private final ImageMapper imageMapper;
+
     @Override
     public ImageMetadataResponse getImageMetadata(String imageName) {
-        ImageMetadata byName = imageMetadataRepository.findByName(imageName);
+        ImageMetadata byName = imageMetadataRepository.findByImageName(imageName);
         return imageMapper.toImageMetadataResponse(byName);
     }
 
@@ -26,8 +30,9 @@ public class ImageMetadataServiceImpl implements ImageMetadataService {
     }
 
     @Override
+    @Transactional
     public void deleteImageMetadata(String imageMetadata) {
-        imageMetadataRepository.deleteByName(imageMetadata);
+        imageMetadataRepository.deleteByImageName(imageMetadata);
     }
 
     @Override

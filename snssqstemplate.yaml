@@ -1,0 +1,22 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation template to create an SQS queue and an SNS topic for the awscourseproject.
+
+Resources:
+  UploadsNotificationQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: awscourseproject-UploadsNotificationQueue
+
+  UploadsNotificationTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: awscourseproject-UploadsNotificationTopic
+
+Outputs:
+  QueueURL:
+    Description: URL of the SQS queue
+    Value: !Ref UploadsNotificationQueue
+
+  TopicARN:
+    Description: ARN of the SNS topic
+    Value: !Ref UploadsNotificationTopic
