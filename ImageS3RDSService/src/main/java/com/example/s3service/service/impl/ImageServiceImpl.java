@@ -69,7 +69,6 @@ public class ImageServiceImpl implements ImageService {
 
             String sqsMessage = createMessage(imageMetadataResponse);
             notificationService.sendSqsMessage(sqsMessage);
-            log.info("Message sent to SQS: {}", sqsMessage);
             return ImageResponse.builder()
                     .metadata(imageMetadataResponse)
                     .file(imageUploadRequest.getFile().getBytes())

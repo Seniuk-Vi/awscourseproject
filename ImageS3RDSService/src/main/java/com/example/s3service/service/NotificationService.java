@@ -9,8 +9,6 @@ public interface NotificationService {
 
     void unsubscribe(String email);
 
-    void sendSnsMessage(String message);
-
     void sendSqsMessage(String message);
 
 }

@@ -1,6 +1,17 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: CloudFormation template to create an SQS queue and an SNS topic for the awscourseproject.
 
+Parameters:
+  S3BucketName:
+    Description: The name of the S3 bucket containing the Lambda deployment package
+    Type: String
+    Default: uploadsnotificationfunctionbucket
+
+  S3Key:
+    Description: The S3 key (path) to the Lambda deployment package
+    Type: String
+    Default: UploadsNotificationFunction-0.0.1-SNAPSHOT.jar
+
 Resources:
   UploadsNotificationQueue:
     Type: AWS::SQS::Queue
@@ -11,6 +22,63 @@ Resources:
     Type: AWS::SNS::Topic
     Properties:
       TopicName: awscourseproject-UploadsNotificationTopic
+
+  UploadsNotificationFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: LambdaSQSSNSPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                Resource: !GetAtt UploadsNotificationQueue.Arn
+              - Effect: Allow
+                Action:
+                  - sns:Publish
+                Resource: !Ref UploadsNotificationTopic
+
+  UploadsNotificationFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: awscourseproject-UploadsNotificationFunction
+      Handler: com.awscourseproject.lambda.SqsToSnsLambda::handleRequest
+      Role: !GetAtt UploadsNotificationFunctionRole.Arn
+      Code:
+        S3Bucket: !Ref S3BucketName
+        S3Key: !Ref S3Key
+      Runtime: java17
+      MemorySize: 1000
+      Timeout: 30
+      Environment:
+        Variables:
+          SNS_TOPIC_ARN: !Ref UploadsNotificationTopic
+
+  ExampleLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Join ['/', ['/aws/lambda', !Ref UploadsNotificationFunction]]
+      RetentionInDays: 30
+
+  SQSToLambdaEventSource:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      BatchSize: 10
+      EventSourceArn: !GetAtt UploadsNotificationQueue.Arn
+      FunctionName: !Ref UploadsNotificationFunction
 
 Outputs:
   QueueURL:
