@@ -1,16 +1,42 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: CloudFormation template to create an SQS queue and an SNS topic for the awscourseproject.
+Description: CloudFormation template to create an SQS queue, an SNS topic, and Lambda functions for the awscourseproject, including S3 event triggers.
 
 Parameters:
+
+  DBURL:
+    Description: The URL of the RDS database
+    Type: String
+    Default: jdbc:postgresql://images3.cvqk8y2kugon.us-east-1.rds.amazonaws.com:5432/images3
+
+  DBUsername:
+    Description: The username for the RDS database
+    Type: String
+    Default: postgres
+
+  DBPassword:
+    Description: The password for the RDS database
+    Type: String
+    Default: postgres
+
   S3BucketName:
     Description: The name of the S3 bucket containing the Lambda deployment package
     Type: String
     Default: uploadsnotificationfunctionbucket
 
   S3Key:
-    Description: The S3 key (path) to the Lambda deployment package
+    Description: The S3 key (path) to the UploadsNotificationFunction package
     Type: String
     Default: UploadsNotificationFunction-0.0.1-SNAPSHOT.jar
+
+  S3KeyDataConsistencyKey:
+    Description: The S3 key (path) to the DataConsistencyFunction package
+    Type: String
+    Default: DataConsistencyFunction-0.0.1-SNAPSHOT.jar
+
+  TriggerBucketName:
+    Description: The name of the S3 bucket to trigger the DataConsistencyFunction
+    Type: String
+    Default: images3rdsappawscourse
 
 Resources:
   UploadsNotificationQueue:
@@ -23,7 +49,7 @@ Resources:
     Properties:
       TopicName: awscourseproject-UploadsNotificationTopic
 
-  UploadsNotificationFunctionRole:
+  LambdaExecutionRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -50,13 +76,22 @@ Resources:
                 Action:
                   - sns:Publish
                 Resource: !Ref UploadsNotificationTopic
+              - Effect: Allow
+                Action:
+                  - rds-db:connect
+                Resource: arn:aws:rds-db:us-east-1:340752819584:dbuser:*/*
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource: arn:aws:s3:::*
 
   UploadsNotificationFunction:
     Type: AWS::Lambda::Function
     Properties:
       FunctionName: awscourseproject-UploadsNotificationFunction
       Handler: com.awscourseproject.lambda.SqsToSnsLambda::handleRequest
-      Role: !GetAtt UploadsNotificationFunctionRole.Arn
+      Role: !GetAtt LambdaExecutionRole.Arn
       Code:
         S3Bucket: !Ref S3BucketName
         S3Key: !Ref S3Key
@@ -67,10 +102,34 @@ Resources:
         Variables:
           SNS_TOPIC_ARN: !Ref UploadsNotificationTopic
 
+  DataConsistencyFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: awscourseproject-DataConsistencyFunction
+      Handler: com.awscourseproject.lambda.DataConsistencyFunction::handleRequest
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref S3BucketName
+        S3Key: !Ref S3KeyDataConsistencyKey
+      Runtime: java17
+      MemorySize: 1000
+      Timeout: 30
+      Environment:
+        Variables:
+          DB_URL: !Ref DBURL
+          DB_USERNAME: !Ref DBUsername
+          DB_PASSWORD: !Ref DBPassword
+
   ExampleLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Join ['/', ['/aws/lambda', !Ref UploadsNotificationFunction]]
+      RetentionInDays: 30
+
+  DataExampleLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Join ['/', ['/aws/lambda/DataConsistencyFunction', !Ref DataConsistencyFunction]]
       RetentionInDays: 30
 
   SQSToLambdaEventSource:
@@ -79,6 +138,26 @@ Resources:
       BatchSize: 10
       EventSourceArn: !GetAtt UploadsNotificationQueue.Arn
       FunctionName: !Ref UploadsNotificationFunction
+
+  PermissionForS3ToInvokeLambda:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref DataConsistencyFunction
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceArn: !Sub arn:aws:s3:::${TriggerBucketName}
+
+  TriggerBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref TriggerBucketName
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Function: !GetAtt DataConsistencyFunction.Arn
+    DependsOn: PermissionForS3ToInvokeLambda
+
+
 
 Outputs:
   QueueURL:

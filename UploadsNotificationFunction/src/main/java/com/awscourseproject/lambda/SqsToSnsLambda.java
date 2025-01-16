@@ -25,13 +25,13 @@ public class SqsToSnsLambda implements RequestHandler<SQSEvent, Void> {
 
     @Override
     public Void handleRequest(SQSEvent event, Context context) {
-        logger.info("Received SQS event with {} records", event.getRecords().size());
+        context.getLogger().log("Received SQS event with " + event.getRecords().size() + " records");
         for (SQSEvent.SQSMessage sqsMessage : event.getRecords()) {
             String messageBody = sqsMessage.getBody();
 
             // Publish message to SNS
             PublishResponse publishResponse = publishMessage(messageBody);
-            logger.info("Published message to SNS with ID: {}", publishResponse.messageId());
+            context.getLogger().log("Published message to SNS with ID: " + publishResponse.messageId());
         }
         return null;
     }
