@@ -25,3 +25,9 @@
 /dist/
 /nbdist/
 /.nb-gradle/
+
+
+### SAM ###
+.aws-sam/
+samconfig.toml
+packaged.yaml

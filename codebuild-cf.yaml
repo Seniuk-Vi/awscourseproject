@@ -1,0 +1,96 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudFormation template to create an AWS CodeBuild project for a Java application using SAM
+
+Parameters:
+  ProjectName:
+    Type: String
+    Description: The name of the CodeBuild project
+    Default: awscourseproject
+
+  SourceRepoUrl:
+    Type: String
+    Description: The URL of the source code repository (e.g., GitHub)
+  Default: awscourseproject
+
+  SourceRepoBranch:
+    Type: String
+    Description: The branch of the source code repository to build
+    Default: ci/cd
+
+  ArtifactsBucket:
+    Type: String
+    Description: The name of the S3 bucket to store build artifacts
+    Default: awscourceprojectcodebuildartifactbucket
+
+Resources:
+  CodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CodeBuildAccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:ListBucket
+                Resource: !Sub arn:aws:s3:::${ArtifactsBucket}/*
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - codebuild:CreateReportGroup
+                  - codebuild:CreateReport
+                  - codebuild:UpdateReport
+                  - codebuild:BatchPutTestCases
+                  - codebuild:BatchPutCodeCoverages
+                Resource: '*'
+
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: !Ref ProjectName
+      Source:
+        Type: GITHUB
+        Location: !Ref SourceRepoUrl
+        GitCloneDepth: 1
+        BuildSpec: buildspec.yml
+        ReportBuildStatus: true
+      Artifacts:
+        Type: S3
+        Location: !Ref ArtifactsBucket
+        Path: artifacts
+        Packaging: ZIP
+        Name: build-artifacts.zip
+      Environment:
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:5.0
+        Type: LINUX_CONTAINER
+        EnvironmentVariables:
+          - Name: JAVA_HOME
+            Value: /usr/lib/jvm/java-11-openjdk
+      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
+      TimeoutInMinutes: 30
+      Triggers:
+        Webhook: true
+        FilterGroups:
+          - - Type: EVENT
+              Pattern: PUSH
+
+Outputs:
+  CodeBuildProjectName:
+    Description: The name of the CodeBuild project
+    Value: !Ref CodeBuildProject

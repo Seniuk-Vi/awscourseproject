@@ -23,11 +23,6 @@ Parameters:
     Type: String
     Default: uploadsnotificationfunctionbucket
 
-  S3Key:
-    Description: The S3 key (path) to the UploadsNotificationFunction package
-    Type: String
-    Default: UploadsNotificationFunction-0.0.1-SNAPSHOT.jar
-
   S3KeyDataConsistencyKey:
     Description: The S3 key (path) to the DataConsistencyFunction package
     Type: String
@@ -86,22 +81,6 @@ Resources:
                   - s3:PutObject
                 Resource: arn:aws:s3:::*
 
-  UploadsNotificationFunction:
-    Type: AWS::Lambda::Function
-    Properties:
-      FunctionName: awscourseproject-UploadsNotificationFunction
-      Handler: com.awscourseproject.lambda.SqsToSnsLambda::handleRequest
-      Role: !GetAtt LambdaExecutionRole.Arn
-      Code:
-        S3Bucket: !Ref S3BucketName
-        S3Key: !Ref S3Key
-      Runtime: java17
-      MemorySize: 1000
-      Timeout: 30
-      Environment:
-        Variables:
-          SNS_TOPIC_ARN: !Ref UploadsNotificationTopic
-
   DataConsistencyFunction:
     Type: AWS::Lambda::Function
     Properties:
@@ -120,24 +99,11 @@ Resources:
           DB_USERNAME: !Ref DBUsername
           DB_PASSWORD: !Ref DBPassword
 
-  ExampleLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Join ['/', ['/aws/lambda', !Ref UploadsNotificationFunction]]
-      RetentionInDays: 30
-
   DataExampleLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: !Join ['/', ['/aws/lambda/DataConsistencyFunction', !Ref DataConsistencyFunction]]
       RetentionInDays: 30
-
-  SQSToLambdaEventSource:
-    Type: AWS::Lambda::EventSourceMapping
-    Properties:
-      BatchSize: 10
-      EventSourceArn: !GetAtt UploadsNotificationQueue.Arn
-      FunctionName: !Ref UploadsNotificationFunction
 
   PermissionForS3ToInvokeLambda:
     Type: AWS::Lambda::Permission

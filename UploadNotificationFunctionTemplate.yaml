@@ -1,0 +1,75 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: SAM template for UploadsNotificationFunction with SQS trigger
+
+Parameters:
+
+  UploadsNotificationQueueArn:
+    Type: String
+    Default: "arn:aws:sqs:us-east-1:340752819584:awscourseproject-UploadsNotificationQueue"
+    Description: ARN of the SQS queue
+
+  UploadsNotificationTopicArn:
+    Type: String
+    Default: "arn:aws:sns:us-east-1:340752819584:awscourseproject-UploadsNotificationTopic"
+    Description: ARN of the SNS topic
+
+Resources:
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: LambdaSQSSNSPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                Resource: !Ref UploadsNotificationQueueArn
+              - Effect: Allow
+                Action:
+                  - sns:Publish
+                Resource: !Ref UploadsNotificationTopicArn
+
+  UploadsNotificationFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: awscourseproject-UploadsNotificationFunction
+      Handler: com.awscourseproject.lambda.SqsToSnsLambda::handleRequest
+      Runtime: java17
+      MemorySize: 1000
+      Timeout: 30
+      Environment:
+        Variables:
+          SNS_TOPIC_ARN: !Ref UploadsNotificationTopicArn
+      Role: !GetAtt LambdaExecutionRole.Arn
+      CodeUri: UploadsNotificationFunction
+      Events:
+        SQSTrigger:
+          Type: SQS
+          Properties:
+            Queue: !Ref UploadsNotificationQueueArn
+            BatchSize: 10
+
+  UploadsNotificationLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Join ['/', ['/aws/lambda', !Ref UploadsNotificationFunction]]
+      RetentionInDays: 14
+
+Outputs:
+  UploadsNotificationFunctionArn:
+    Description: ARN of the UploadsNotificationFunction
+    Value: !GetAtt UploadsNotificationFunction.Arn
