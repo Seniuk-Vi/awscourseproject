@@ -25,6 +25,7 @@ public class SqsToSnsLambda implements RequestHandler<SQSEvent, Void> {
 
     @Override
     public Void handleRequest(SQSEvent event, Context context) {
+        context.getLogger().log("test log");
         context.getLogger().log("Received SQS event with " + event.getRecords().size() + " records");
         for (SQSEvent.SQSMessage sqsMessage : event.getRecords()) {
             String messageBody = sqsMessage.getBody();
