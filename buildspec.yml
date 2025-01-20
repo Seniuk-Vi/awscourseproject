@@ -32,7 +32,7 @@ phases:
 artifacts:
   files:
     - packaged.yaml
-    - target/UploadsNotificationFunction-0.0.1-SNAPSHOT.jar
+    - UploadsNotificationFunction/target/UploadsNotificationFunction-0.0.1-SNAPSHOT.jar
 
 cache:
   paths:
