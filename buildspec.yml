@@ -23,7 +23,7 @@ phases:
       - echo "Building the JAR file"
       - mvn clean package
       - echo "Packaging the SAM application"
-      - sam package --template-file UploadNotificationFunctionTemplate.yaml --output-template-file packaged.yaml --s3-bucket awscourseprojectsambucket
+      - sam package --template-file UploadNotificationFunctionTemplate.yaml --output-template-file packaged.yaml --s3-bucket awscourseprojectsambucketcourse
 
   post_build:
     commands:
